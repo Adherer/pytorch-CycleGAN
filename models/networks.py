@@ -2,12 +2,14 @@ import torch
 import torch.nn as nn
 from torch.nn import init
 import functools
-from torch.optim import lr_scheduler
+from torch.optim import lr_scheduler    # torch.optim.lr_scheduler 提供了几种方法来根据epoches的数量调整学习率
 
 ###############################################################################
 # Helper Functions
 ###############################################################################
 
+# Batch_Norm & instance_norm两种不同的标准化方式
+# functools.partial表示偏函数，即输入了默认参数使得返回一个新的function
 
 def get_norm_layer(norm_type='instance'):
     if norm_type == 'batch':
@@ -20,7 +22,7 @@ def get_norm_layer(norm_type='instance'):
         raise NotImplementedError('normalization layer [%s] is not found' % norm_type)
     return norm_layer
 
-
+# 几种不同的learning rate policy
 def get_scheduler(optimizer, opt):
     if opt.lr_policy == 'lambda':
         def lambda_rule(epoch):
@@ -37,7 +39,8 @@ def get_scheduler(optimizer, opt):
         return NotImplementedError('learning rate policy [%s] is not implemented', opt.lr_policy)
     return scheduler
 
-
+# 网络的权重初始化，这种初始化的写法值得学习
+# 初始化方法写的优雅，而且还有函数里面嵌套函数的用法
 def init_weights(net, init_type='normal', gain=0.02):
     def init_func(m):
         classname = m.__class__.__name__
@@ -61,7 +64,7 @@ def init_weights(net, init_type='normal', gain=0.02):
     print('initialize network with %s' % init_type)
     net.apply(init_func)
 
-
+# 通过调用init_weights方法初始化网络
 def init_net(net, init_type='normal', init_gain=0.02, gpu_ids=[]):
     if len(gpu_ids) > 0:
         assert(torch.cuda.is_available())
@@ -70,8 +73,21 @@ def init_net(net, init_type='normal', init_gain=0.02, gpu_ids=[]):
     init_weights(net, init_type, gain=init_gain)
     return net
 
-
+# 定义generate network
+# generate network有两种形式，一种是resnet，一种是unet
+'''
+参数说明：input_nc -- input image channel   default = 3
+         output_nc -- output image channels  default = 3
+         ngf  -- gen filters in first conv layer  default=64
+         netG  -- selects model to use for netG   default='resnet_9blocks'
+         norm  -- 标准化方式，有norm & instance两种 
+         use_dropout -- 是否使用dropout
+         init_type  --  权重初始化方式，有normal & xavier & kaiming & orthogonal 四种
+         init_gain  --  可选的缩放因子，详情：https://pytorch-cn.readthedocs.io/zh/latest/package_references/nn_init/
+         gpu_ids   --  pu ids: e.g. 0  0,1,2, 0,2. use -1 for CPU  default='0'
+'''
 def define_G(input_nc, output_nc, ngf, netG, norm='batch', use_dropout=False, init_type='normal', init_gain=0.02, gpu_ids=[]):
+
     net = None
     norm_layer = get_norm_layer(norm_type=norm)
 
@@ -87,6 +103,10 @@ def define_G(input_nc, output_nc, ngf, netG, norm='batch', use_dropout=False, in
         raise NotImplementedError('Generator model name [%s] is not recognized' % netG)
     return init_net(net, init_type, init_gain, gpu_ids)
 
+# 定义discriminate network
+# discriminate network有两种形式，一种是NLayerDiscriminator，一种是PixelDiscriminator
+# 参数定义与上面类似
+# n_layers_D -- only used if netD==n_layers default = 3
 
 def define_D(input_nc, ndf, netD,
              n_layers_D=3, norm='batch', use_sigmoid=False, init_type='normal', init_gain=0.02, gpu_ids=[]):
@@ -113,24 +133,29 @@ def define_D(input_nc, ndf, netD,
 # When LSGAN is used, it is basically same as MSELoss,
 # but it abstracts away the need to create the target label tensor
 # that has the same size as the input
+
+
 class GANLoss(nn.Module):
     def __init__(self, use_lsgan=True, target_real_label=1.0, target_fake_label=0.0):
         super(GANLoss, self).__init__()
+        # 给module添加一个persistent buffer。
+        # persistent buffer通常被用在这么一种情况：我们需要保存一个状态，但是这个状态不能看作成为模型参数。
         self.register_buffer('real_label', torch.tensor(target_real_label))
         self.register_buffer('fake_label', torch.tensor(target_fake_label))
+
         if use_lsgan:
-            self.loss = nn.MSELoss()
+            self.loss = nn.MSELoss()    # 创建一个衡量输入x(模型预测输出)和目标y之间均方误差标准。
         else:
-            self.loss = nn.BCELoss()
+            self.loss = nn.BCELoss()    # 计算 target 与 output 之间的二进制交叉熵
 
     def get_target_tensor(self, input, target_is_real):
         if target_is_real:
             target_tensor = self.real_label
         else:
             target_tensor = self.fake_label
-        return target_tensor.expand_as(input)
+        return target_tensor.expand_as(input)       # 将tensor扩展为参数tensor的大小。 该操作等效与：self.expand(tensor.size())
 
-    def __call__(self, input, target_is_real):
+    def __call__(self, input, target_is_real):      # 方便后续通过object调用__call__方法
         target_tensor = self.get_target_tensor(input, target_is_real)
         return self.loss(input, target_tensor)
 
@@ -139,6 +164,8 @@ class GANLoss(nn.Module):
 # downsampling/upsampling operations.
 # Code and idea originally from Justin Johnson's architecture.
 # https://github.com/jcjohnson/fast-neural-style/
+# 定义ResnetGenerator
+
 class ResnetGenerator(nn.Module):
     def __init__(self, input_nc, output_nc, ngf=64, norm_layer=nn.BatchNorm2d, use_dropout=False, n_blocks=6, padding_type='reflect'):
         assert(n_blocks >= 0)
@@ -372,7 +399,8 @@ class PixelDiscriminator(nn.Module):
             nn.Conv2d(ndf, ndf * 2, kernel_size=1, stride=1, padding=0, bias=use_bias),
             norm_layer(ndf * 2),
             nn.LeakyReLU(0.2, True),
-            nn.Conv2d(ndf * 2, 1, kernel_size=1, stride=1, padding=0, bias=use_bias)]
+            nn.Conv2d(ndf * 2, 1, kernel_size=1, stride=1, padding=0, bias=use_bias)
+        ]
 
         if use_sigmoid:
             self.net.append(nn.Sigmoid())

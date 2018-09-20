@@ -7,6 +7,7 @@ class TestModel(BaseModel):
     def name(self):
         return 'TestModel'
 
+    # 重写父类的静态方法
     @staticmethod
     def modify_commandline_options(parser, is_train=True):
         assert not is_train, 'TestModel cannot be used in train mode'

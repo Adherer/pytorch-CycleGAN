@@ -13,7 +13,7 @@ class UnalignedDataset(BaseDataset):
     def initialize(self, opt):
         self.opt = opt
         self.root = opt.dataroot
-        self.dir_A = os.path.join(opt.dataroot, opt.phase + 'A')
+        self.dir_A = os.path.join(opt.dataroot, opt.phase + 'A')     # --opt.phase  default='train'
         self.dir_B = os.path.join(opt.dataroot, opt.phase + 'B')
 
         self.A_paths = make_dataset(self.dir_A)
@@ -25,6 +25,7 @@ class UnalignedDataset(BaseDataset):
         self.B_size = len(self.B_paths)
         self.transform = get_transform(opt)
 
+    # 用索引取值的特殊方法
     def __getitem__(self, index):
         A_path = self.A_paths[index % self.A_size]
         if self.opt.serial_batches:

@@ -3,7 +3,9 @@ from .base_options import BaseOptions
 
 class TrainOptions(BaseOptions):
     def initialize(self, parser):
+        # 根据BaseOptions添加初始化参数
         parser = BaseOptions.initialize(self, parser)
+        # 添加一些额外的参数
         parser.add_argument('--display_freq', type=int, default=400, help='frequency of showing training results on screen')
         parser.add_argument('--display_ncols', type=int, default=4, help='if positive, display all images in a single visdom web panel with certain number of images per row.')
         parser.add_argument('--update_html_freq', type=int, default=1000, help='frequency of saving training results to html')
@@ -24,5 +26,6 @@ class TrainOptions(BaseOptions):
         parser.add_argument('--lr_policy', type=str, default='lambda', help='learning rate policy: lambda|step|plateau|cosine')
         parser.add_argument('--lr_decay_iters', type=int, default=50, help='multiply by a gamma every lr_decay_iters iterations')
 
+        # 是否为训练/测试模式
         self.isTrain = True
         return parser
